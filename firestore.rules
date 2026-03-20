@@ -1,0 +1,26 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function userDocPath(uid) { return /databases/$(database)/documents/usuarios/$(uid); }
+    function userProfileExists() { return signedIn() && exists(userDocPath(request.auth.uid)); }
+    function userProfile() { return get(userDocPath(request.auth.uid)).data; }
+    function isActiveUser() { return userProfileExists() && userProfile().active == true; }
+    function isAdmin() { return isActiveUser() && userProfile().role == 'admin'; }
+    function canEditCirugias() { return isActiveUser() && (userProfile().role == 'admin' || userProfile().role == 'operador'); }
+
+    match /cirugias/{docId} {
+      allow read: if isActiveUser();
+      allow create, update: if canEditCirugias();
+      allow delete: if isAdmin();
+    }
+
+    match /usuarios/{userId} {
+      allow read: if isActiveUser() && (request.auth.uid == userId || isAdmin());
+      allow create: if isAdmin();
+      allow update: if isAdmin() || (isActiveUser() && request.auth.uid == userId);
+      allow delete: if isAdmin();
+    }
+  }
+}

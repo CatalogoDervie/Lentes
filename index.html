@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Control de Cirugías — Centro de Ojos Esteves</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="./css/styles.css">
+</head>
+<body>
+
+<!-- ── LOGIN ─────────────────────────────────────────────────────────── -->
+<div id="loginScreen">
+  <div class="login-card">
+    <div class="login-brand">Centro de Ojos Esteves</div>
+    <div class="login-sub">Control de Cirugías</div>
+    <div class="login-error" id="loginError"></div>
+    <form class="login-form" id="loginForm">
+      <div>
+        <label for="loginEmail">Correo electrónico</label>
+        <input id="loginEmail" type="email" autocomplete="username" placeholder="usuario@correo.com">
+      </div>
+      <div>
+        <label for="loginPass">Contraseña</label>
+        <input id="loginPass" type="password" autocomplete="current-password" placeholder="••••••••">
+      </div>
+      <button class="btn primary" id="loginBtn" type="submit">Ingresar</button>
+    </form>
+    <div class="login-help">Solo ingresan usuarios creados por el administrador.</div>
+  </div>
+</div>
+
+<!-- ── APP ───────────────────────────────────────────────────────────── -->
+<div id="appContent">
+
+  <div class="topbar">
+    <div class="app-shell">
+
+      <!-- HEADER -->
+      <header>
+        <div class="brandbar">
+          <div class="logo">Centro de Ojos Esteves <small>Gestión de Cirugías</small></div>
+          <div class="status-pill">
+            <span class="status-dot"></span>
+            <span>Listo</span>
+            <span id="syncBadge"></span>
+            <span id="connectorBadge" class="connector-badge off" title="Clic para probar conexión" style="cursor:pointer">⚫ Conector: no detectado</span>
+          </div>
+          <div id="authMeta">
+            <span id="authUserBadge"></span>
+            <span id="authRoleBadge"></span>
+            <button class="btn" id="logoutBtn" style="display:none">Salir</button>
+          </div>
+        </div>
+
+        <div class="actionbar">
+          <button class="btn primary" id="btnNuevo">+ Nuevo Paciente</button>
+          <button class="btn" id="btnSync" title="Recargar datos del servidor">↺ Sync</button>
+          <button class="btn" id="btnLentess">🧿 Lentess filtrados</button>
+          <button class="btn" id="toggleKpisBtn">Ocultar KPIs</button>
+          <span class="header-sep"></span>
+          <details class="more-menu" id="moreMenu">
+            <summary class="btn">Más ▾</summary>
+            <div class="more-menu-list">
+              <button class="btn" id="btnConfigurarURL" title="Configurar URL del servidor">⚙ Configurar</button>
+              <button class="btn green" id="btnExportarListos">↓ Exportar Listos</button>
+              <button class="btn" id="btnExportarDia">📤 Exportar cirugías del día</button>
+              <button class="btn" id="btnStock">🧪 Stock lentes</button>
+              <button class="btn" id="btnExportarVista">📄 Exportar vista</button>
+              <button class="btn" id="btnBackup">💾 Backup JSON</button>
+              <button class="btn" id="btnImportar">📥 Importar JSON</button>
+              <hr style="border:none;border-top:1px solid #e2e8f0;margin:4px 0">
+              <button class="btn" id="btnReparar" title="Limpiar caché y recargar desde Firestore" style="color:#b45309;border-color:#fcd34d">🔧 Reparar datos</button>
+            </div>
+          </details>
+        </div>
+      </header>
+
+      <!-- KPIs -->
+      <div class="statsbar" id="statsbar"></div>
+
+      <!-- TABS -->
+      <div class="tabrow" id="tabrow">
+        <button class="tablink active" data-tab="tabla">📋 Tabla</button>
+        <button class="tablink" data-tab="kanban">🗂 Kanban</button>
+        <button class="tablink" data-tab="calendario">🗓 Calendario</button>
+        <button class="tablink" data-tab="estadisticas">📊 Estadísticas</button>
+        <button class="tablink" data-tab="facturacion">💳 Facturación</button>
+        <button class="tablink" data-tab="whatsapp">💬 WhatsApp</button>
+      </div>
+
+      <!-- FILTERS -->
+      <div class="filterbar">
+        <input type="text" id="q" placeholder="🔍 Buscar nombre, DNI o afiliado...">
+        <select id="fCli">
+          <option value="">Todas las clínicas</option>
+          <option>CDU</option>
+          <option>Gualeguaychú</option>
+        </select>
+        <select id="fEst">
+          <option value="">Todos los estados</option>
+        </select>
+        <div class="quick-filters" id="quickFilters">
+          <button class="qf-btn active" data-qf="TODOS">TODOS</button>
+          <button class="qf-btn" data-qf="PEDIR LENTE">PEDIR LENTE</button>
+          <button class="qf-btn" data-qf="PROGRAMAR CIRUGIA">PROGRAMAR CIRUGÍA</button>
+          <button class="qf-btn" data-qf="FECHA PROGRAMADA">FECHA PROGRAMADA</button>
+          <button class="qf-btn" data-qf="REALIZADA">REALIZADA</button>
+          <button class="qf-btn" data-qf="FALTA FACTURAR">FALTA FACTURAR</button>
+          <button class="qf-btn" data-qf="FACTURADA">FACTURADA</button>
+          <button class="qf-btn" data-qf="FACTURADA FALTA OD/OI">FACTURADA FALTA OD/OI</button>
+          <button class="qf-btn" data-qf="CON ALERTAS">⚠ CON ALERTAS</button>
+        </div>
+        <select id="fOS">
+          <option value="">Todas las obras sociales</option>
+          <option>PAMI</option>
+          <option>OSER</option>
+          <option>PARTICULAR</option>
+        </select>
+        <label class="filter-label">
+          <input type="checkbox" id="showSilenced"> Mostrar silenciadas
+        </label>
+        <button class="btn" id="btnConfigAlertas" style="padding:5px 10px">⚙ Alertas</button>
+        <button class="btn" id="btnLimpiarFiltros">Limpiar filtros</button>
+        <button class="alerts-toggle" id="alertsToggle">⚠ <span id="alertsCount">0</span> alertas</button>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="app-shell content-card">
+
+    <!-- PANEL DE ALERTAS -->
+    <div class="alerts-panel" id="alertsPanel">
+      <div class="alerts-head">
+        <span id="alertsTitle">Alertas</span>
+        <button id="btnCloseAlerts" style="background:none;border:none;cursor:pointer;color:#dc2626;font-size:13px">✕</button>
+      </div>
+      <div class="alerts-filters">
+        <button class="af-btn active" id="af-TODAS" data-af="TODAS">Todas</button>
+        <button class="af-btn" id="af-criticas" data-af="criticas">🚨 Críticas</button>
+        <button class="af-btn" id="af-lens_delayed" data-af="lens_delayed">📦 Lente demorada</button>
+        <button class="af-btn" id="af-no_schedule_after_arrival" data-af="no_schedule_after_arrival">📅 Programar cirugía</button>
+        <button class="af-btn" id="af-billing_pending" data-af="billing_pending">💰 Sin facturar</button>
+        <button class="af-btn" id="af-second_surgery_missing" data-af="second_surgery_missing">👁 Segundo ojo</button>
+      </div>
+      <div id="alertsList"></div>
+    </div>
+
+    <!-- PANEL TRABAJO DEL DÍA -->
+    <div id="workdayPanel" style="margin:10px 0 0;display:none">
+      <div id="workdayBlocks" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-bottom:12px"></div>
+    </div>
+
+    <!-- TABLA -->
+    <div id="tabView">
+      <div class="tablewrap">
+        <div class="table-scroll">
+          <table id="mainTable">
+            <colgroup id="mainColgroup"></colgroup>
+            <thead id="mainThead"></thead>
+            <tbody id="tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- OTRAS VISTAS -->
+    <div id="kanView"   style="display:none"></div>
+    <div id="calView"   style="display:none;margin:10px 0 20px"></div>
+    <div id="statsView" style="display:none;margin:10px 0 20px"></div>
+    <div id="factView"  style="display:none;margin:10px 0 20px"></div>
+    <div id="waView"    style="display:none;margin:10px 0 20px"></div>
+
+  </div>
+
+  <!-- PANEL LATERAL -->
+  <div class="side" id="sidePanel">
+    <div class="side-head">
+      <button class="btn" id="btnSideBack">← Volver</button>
+      <div>
+        <div class="side-name" id="sideName">—</div>
+        <div class="side-sub"  id="sideSub">—</div>
+      </div>
+      <button class="side-close" id="btnCloseSide">✕</button>
+    </div>
+    <div class="side-body" id="sideBody"></div>
+    <div class="side-foot" id="sideFoot"></div>
+  </div>
+  <div id="sideOverlay" style="position:fixed;inset:0;background:#0003;z-index:299;display:none"></div>
+
+  <!-- MODAL EXPORT -->
+  <div id="exportModal" style="display:none;position:fixed;inset:0;background:#0005;z-index:400;align-items:center;justify-content:center">
+    <div style="background:#fff;border-radius:12px;max-width:700px;width:95%;max-height:85vh;overflow:hidden;display:flex;flex-direction:column">
+      <div style="padding:16px 20px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center">
+        <div style="font-size:15px;font-weight:700">📋 Listos para pedir lente</div>
+        <button id="btnCloseExport" style="background:none;border:none;cursor:pointer;font-size:18px;color:#9ca3af">✕</button>
+      </div>
+      <div style="padding:14px 20px;flex:1;overflow-y:auto" id="exportBody"></div>
+      <div style="padding:12px 20px;border-top:1px solid #e2e8f0;display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn" id="btnCloseExport2">Cerrar</button>
+        <button class="btn primary" id="btnCopyExcel">Copiar TSV</button>
+        <button class="btn green" id="btnDownloadListos">↓ Descargar Excel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL STOCK -->
+  <div id="stockModal" style="display:none;position:fixed;inset:0;background:#0005;z-index:410;align-items:center;justify-content:center">
+    <div style="background:#fff;border-radius:12px;max-width:760px;width:95%;max-height:85vh;overflow:hidden;display:flex;flex-direction:column">
+      <div style="padding:16px 20px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center">
+        <div style="font-size:15px;font-weight:700">🧪 Inventario de lentes</div>
+        <button id="btnCloseStock" style="background:none;border:none;cursor:pointer;font-size:18px;color:#9ca3af">✕</button>
+      </div>
+      <div style="padding:14px 20px;flex:1;overflow-y:auto" id="stockBody"></div>
+      <div style="padding:12px 20px;border-top:1px solid #e2e8f0;display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn" id="btnCloseStock2">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+    <!-- MODAL RECETAS -->
+  <div id="recetasModal" style="display:none;position:fixed;inset:0;background:#0005;z-index:422;align-items:center;justify-content:center">
+    <div style="background:#fff;border-radius:12px;max-width:900px;width:95%;max-height:90vh;overflow:hidden;display:flex;flex-direction:column">
+      <div style="padding:16px 20px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center">
+        <div style="font-size:15px;font-weight:700">🧾 PAMI recetas (post envío de documentos)</div>
+        <button id="btnCloseRecetas" style="background:none;border:none;cursor:pointer;font-size:18px;color:#9ca3af">✕</button>
+      </div>
+      <div id="recetasBody" style="padding:14px 20px;flex:1;overflow-y:auto"></div>
+      <div style="padding:12px 20px;border-top:1px solid #e2e8f0;display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn" id="btnCloseRecetas2">Cerrar</button>
+        <button class="btn green" id="btnRunRecetas">▶ Ejecutar PAMI recetas</button>
+      </div>
+    </div>
+  </div>
+
+<!-- MODAL LENTESS -->
+  <div id="lentessModal" style="display:none;position:fixed;inset:0;background:#0005;z-index:421;align-items:center;justify-content:center">
+    <div style="background:#fff;border-radius:12px;max-width:900px;width:95%;max-height:90vh;overflow:hidden;display:flex;flex-direction:column">
+      <div style="padding:16px 20px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center">
+        <div style="font-size:15px;font-weight:700">🧿 Lentess desde filtros actuales</div>
+        <button id="btnCloseLentess" style="background:none;border:none;cursor:pointer;font-size:18px;color:#9ca3af">✕</button>
+      </div>
+      <div id="lentessBody" style="padding:14px 20px;flex:1;overflow-y:auto"></div>
+      <div style="padding:12px 20px;border-top:1px solid #e2e8f0;display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn" id="btnCloseLentess2">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST -->
+  <div class="toast" id="toast"></div>
+
+</div><!-- /#appContent -->
+
+<!-- ── FIREBASE (módulo) ──────────────────────────────────────────────── -->
+<script type="module" src="./js/firebase.js"></script>
+
+<!-- ── AUTH (módulo inline) ──────────────────────────────────────────── -->
+<script type="module">
+import { signInWithEmailAndPassword, signOut, onAuthStateChanged }
+  from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-auth.js';
+import { doc, getDoc }
+  from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js';
+
+const $ = id => document.getElementById(id);
+
+function showLogin(message = '') {
+  $('loginScreen').style.display = 'flex';
+  $('appContent').style.display  = 'none';
+  const err = $('loginError');
+  err.textContent    = message;
+  err.style.display  = message ? 'block' : 'none';
+}
+
+function showApp(profile, email) {
+  $('loginScreen').style.display     = 'none';
+  $('appContent').style.display      = 'block';
+  $('authUserBadge').style.display   = 'inline-flex';
+  $('authRoleBadge').style.display   = 'inline-flex';
+  $('logoutBtn').style.display       = 'inline-flex';
+  $('authUserBadge').textContent     = email || '';
+  $('authRoleBadge').textContent     = profile?.role || 'readonly';
+}
+
+function friendlyAuthError(code) {
+  return ({
+    'auth/invalid-credential':       'Correo o contraseña incorrectos.',
+    'auth/invalid-login-credentials':'Correo o contraseña incorrectos.',
+    'auth/user-not-found':           'La cuenta no existe.',
+    'auth/wrong-password':           'La contraseña es incorrecta.',
+    'auth/too-many-requests':        'Demasiados intentos. Intentá de nuevo en unos minutos.',
+    'auth/network-request-failed':   'No se pudo conectar con Firebase. Revisá internet.',
+  })[code] || 'No se pudo iniciar sesión.';
+}
+
+// Esperar a que firebase.js exponga firestoreConnector
+async function waitConnector() {
+  if (window.firestoreConnector) return window.firestoreConnector;
+  return new Promise(resolve => {
+    const handler = () => {
+      if (window.firestoreConnector) {
+        window.removeEventListener('firestoreReady', handler);
+        resolve(window.firestoreConnector);
+      }
+    };
+    window.addEventListener('firestoreReady', handler);
+  });
+}
+
+const connector = await waitConnector();
+await connector.ready;
+
+const auth = connector.getAuth();
+const db   = connector.getDb();
+
+// ── Formulario de login ───────────────────────────────────────────────
+$('loginForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const email = $('loginEmail').value.trim();
+  const pass  = $('loginPass').value;
+  const btn   = $('loginBtn');
+  $('loginError').style.display = 'none';
+  if (!email || !pass) { showLogin('Completá correo y contraseña.'); return; }
+  try {
+    btn.disabled    = true;
+    btn.textContent = 'Ingresando…';
+    await signInWithEmailAndPassword(auth, email, pass);
+  } catch (err) {
+    console.error('[Auth]', err);
+    showLogin(friendlyAuthError(err.code));
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = 'Ingresar';
+  }
+});
+
+$('logoutBtn').addEventListener('click', () => signOut(auth));
+
+// ── Cambio de estado de sesión ────────────────────────────────────────
+onAuthStateChanged(auth, async user => {
+  if (!user) { showLogin(''); return; }
+  try {
+    const snap = await getDoc(doc(db, 'usuarios', user.uid));
+    if (!snap.exists()) {
+      await signOut(auth);
+      showLogin('Tu cuenta no tiene perfil habilitado en Firestore (colección usuarios).');
+      return;
+    }
+    const profile = snap.data() || {};
+    if (profile.active !== true) {
+      await signOut(auth);
+      showLogin('Tu cuenta está desactivada.');
+      return;
+    }
+    showApp(profile, user.email);
+    window.CURRENT_USER = { uid: user.uid, email: user.email, profile };
+    await window.startOriginalApp?.();
+  } catch (err) {
+    console.error('[Auth profile]', err);
+    await signOut(auth);
+    showLogin('No se pudo validar el perfil del usuario.');
+  }
+});
+</script>
+
+<!-- ── APP PRINCIPAL ──────────────────────────────────────────────────── -->
+<script type="module" src="./js/app.js"></script>
+
+</body>
+</html>
