@@ -149,10 +149,6 @@ export function secondEyeMissing(p) {
   return hasOther ? '' : otro;
 }
 
-function isResolvedForFinalizacion(p) {
-  return isFacturadoCompleto(p.estadoFac) || getEstadoCirCalculado(p) === 'Realizada';
-}
-
 function faltanteSegundoOjo(p) {
   if (p.ojos !== '2 ojos') return '';
   const dni = String(p.dni || '').trim();
@@ -160,7 +156,7 @@ function faltanteSegundoOjo(p) {
   const otro = p.ojo === 'OD' ? 'OI' : 'OD';
   const other = DB.rows.find(x => x.id !== p.id && String(x.dni || '').trim() === dni && x.ojo === otro);
   if (!other) return otro;
-  return isResolvedForFinalizacion(other) ? '' : otro;
+  return '';
 }
 
 export function isFacturadoCompleto(fac) {
