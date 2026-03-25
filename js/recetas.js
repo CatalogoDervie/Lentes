@@ -6,7 +6,7 @@ import { toast } from './utils.js';
 
 const RECETAS_DEFAULT = {
   diagnostico: 'H57',
-  meds: ['GATMICIN', 'TOLF', 'BRIMOPRESS', 'NATAX', 'DEXAMETASONA FABRA', 'TROPIOFTAL F']
+  meds: ['GATIMICIN', 'TOLF', 'BRIMOPRESS', 'NATAX', 'DEXAMETASONA FABRA', 'TROPIOFTAL F']
 };
 const RECETAS_CREDS_KEY = 'pami_recetas_creds';
 let RECETAS_CTX = { row: null };
@@ -15,6 +15,10 @@ let RECETAS_RUNNING = false;
 function wireRecetasModalActions() {
   const runBtn = document.getElementById('btnRunRecetas');
   if (runBtn) runBtn.onclick = generarRecetasDesdeModal;
+}
+
+function isCaptchaError(msg) {
+  return /captcha|refresque la página|refrescar la página|vuelva a intentarlo/i.test(String(msg || ''));
 }
 
 function getPamiRecetasCreds() {
@@ -58,6 +62,7 @@ export function abrirModalRecetas(row) {
     </label>
     <div style="font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;margin:0 0 10px">
       Si PAMI muestra captcha, validación o OTP, resolvelo en la ventana de Chrome. El proceso espera solo.
+      <br>Si aparece "Error en el captcha", refrescá la página de PAMI en la ventana de Chrome y luego reintentá desde este botón.
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin:0 0 10px">
       <label style="font-size:12px">Diagnóstico CIE10
@@ -128,6 +133,12 @@ export function generarRecetasDesdeModal() {
     })
     .catch(err => {
       const msg = String(err?.message || 'Error ejecutando recetas');
+      if (isCaptchaError(msg)) {
+        const ayuda = 'Captcha inválido en PAMI. Refrescá la página en Chrome, resolvé captcha/OTP y reintentá.';
+        toast('⚠️ ' + ayuda);
+        renderJobStatus('recetasJobStatus', 'run', `⚠️ ${ayuda}`);
+        return;
+      }
       toast('❌ ' + msg);
       renderJobStatus('recetasJobStatus', /no detectado|conector local|iniciar/i.test(msg) ? 'off' : 'err', `❌ ${msg}`);
     })
