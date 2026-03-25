@@ -12,6 +12,11 @@ const RECETAS_CREDS_KEY = 'pami_recetas_creds';
 let RECETAS_CTX = { row: null };
 let RECETAS_RUNNING = false;
 
+function wireRecetasModalActions() {
+  const runBtn = document.getElementById('btnRunRecetas');
+  if (runBtn) runBtn.onclick = generarRecetasDesdeModal;
+}
+
 function getPamiRecetasCreds() {
   try { return JSON.parse(localStorage.getItem(RECETAS_CREDS_KEY) || '{}') || {}; } catch (_) { return {}; }
 }
@@ -67,6 +72,7 @@ export function abrirModalRecetas(row) {
     </div>`;
   const modal = document.getElementById('recetasModal');
   if (modal) modal.style.display = 'flex';
+  wireRecetasModalActions();
 }
 
 export function cerrarModalRecetas() {

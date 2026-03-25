@@ -709,7 +709,6 @@ function initEventDelegation() {
   document.getElementById('btnCloseLentess')?.addEventListener('click', cerrarLentessModal);
   document.getElementById('btnCloseRecetas')?.addEventListener('click', cerrarModalRecetas);
   document.getElementById('btnCloseRecetas2')?.addEventListener('click', cerrarModalRecetas);
-  document.getElementById('btnRunRecetas')?.addEventListener('click', generarRecetasDesdeModal);
   document.getElementById('btnCloseLentess2')?.addEventListener('click', cerrarLentessModal);
   document.getElementById('btnCloseExport')?.addEventListener('click', closeExport);
   document.getElementById('btnCloseExport2')?.addEventListener('click', closeExport);
