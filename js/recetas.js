@@ -6,12 +6,11 @@ import { toast } from './utils.js';
 
 const RECETAS_DEFAULT = {
   diagnostico: 'H57',
-  user: 'UP20338635959',
-  pass: 'joaquin444',
-  meds: ['GATMICIN', 'TOLF', 'BRIMOPRESS', 'NATAX', 'DEXAMETASONA FABRA', 'TROPIOFTAL F']
+  meds: ['GATIMICIN', 'TOLF', 'BRIMOPRESS', 'NATAX', 'DEXAMETASONA FABRA', 'TROPIOFTAL F']
 };
 const RECETAS_CREDS_KEY = 'pami_recetas_creds';
 let RECETAS_CTX = { row: null };
+let RECETAS_RUNNING = false;
 
 function getPamiRecetasCreds() {
   try { return JSON.parse(localStorage.getItem(RECETAS_CREDS_KEY) || '{}') || {}; } catch (_) { return {}; }
@@ -43,15 +42,18 @@ export function abrirModalRecetas(row) {
         <input id="recObraSocial" class="input" type="text" value="${escapeAttr(row.obraSocial || '')}" style="width:100%;margin-top:4px">
       </label>
       <label style="font-size:12px">Usuario PAMI
-        <input id="recUser" class="input" type="text" value="${escapeAttr(creds.user || RECETAS_DEFAULT.user || '')}" style="width:100%;margin-top:4px">
+        <input id="recUser" class="input" type="text" value="${escapeAttr(creds.user || '')}" style="width:100%;margin-top:4px">
       </label>
       <label style="font-size:12px">Contraseña PAMI
-        <input id="recPass" class="input" type="password" value="${escapeAttr(creds.pass || RECETAS_DEFAULT.pass || '')}" style="width:100%;margin-top:4px">
+        <input id="recPass" class="input" type="password" value="${escapeAttr(creds.pass || '')}" style="width:100%;margin-top:4px">
       </label>
     </div>
     <label style="font-size:12px;display:inline-flex;gap:6px;align-items:center;margin-bottom:10px">
-      <input id="recRemember" type="checkbox" ${(creds.user || creds.pass || RECETAS_DEFAULT.user || RECETAS_DEFAULT.pass) ? 'checked' : ''}> guardar credenciales en este navegador
+      <input id="recRemember" type="checkbox" ${(creds.user || creds.pass) ? 'checked' : ''}> guardar credenciales en este navegador
     </label>
+    <div style="font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;margin:0 0 10px">
+      Si PAMI muestra captcha, validación o OTP, resolvelo en la ventana de Chrome. El proceso espera solo.
+    </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin:0 0 10px">
       <label style="font-size:12px">Diagnóstico CIE10
         <input id="recDiag" class="input" type="text" value="${escapeAttr(RECETAS_DEFAULT.diagnostico)}" style="width:100%;margin-top:4px">
@@ -63,7 +65,6 @@ export function abrirModalRecetas(row) {
         <input id="recMed${idx+1}" class="input" type="text" value="${escapeAttr(m)}" style="width:100%;margin-top:4px">
       </label>`).join('')}
     </div>`;
-  document.getElementById('btnRunRecetas')?.addEventListener('click', generarRecetasDesdeModal, { once: true });
   const modal = document.getElementById('recetasModal');
   if (modal) modal.style.display = 'flex';
 }
@@ -82,45 +83,71 @@ function recetasGuardarCreds() {
   return { user, pass };
 }
 
+function setRecetasFeedback(kind, message) {
+  if (message) toast(message);
+  const status = document.getElementById('recetasJobStatus');
+  if (status) renderJobStatus('recetasJobStatus', kind, message || '');
+}
+
+function getRequiredInputValue(id, fallback = '') {
+  const el = document.getElementById(id);
+  if (!el) throw new Error(`No se encontró el campo requerido #${id} en el modal de recetas`);
+  return String(el.value || fallback || '').trim();
+}
+
 export function generarRecetasDesdeModal() {
+  if (RECETAS_RUNNING) {
+    setRecetasFeedback('run', '⏳ Ya hay una ejecución de recetas en curso...');
+    return;
+  }
+  setRecetasFeedback('run', '⏳ Preparando automatización de recetas...');
   const row = RECETAS_CTX.row;
-  if (!row) { toast('No hay paciente seleccionado para recetas'); return; }
-  const credenciales = recetasGuardarCreds();
-  if (!credenciales.user || !credenciales.pass) { toast('Completar usuario y contraseña PAMI'); return; }
-  const afiliado = cleanDigits(document.getElementById('recAfiliado')?.value || row.afiliado || '');
-  if (!afiliado) { toast('Completar afiliado'); return; }
-  const diagnostico = String(document.getElementById('recDiag')?.value || '').trim() || RECETAS_DEFAULT.diagnostico;
-  const meds = Array.from({ length: 6 }, (_, i) => String(document.getElementById(`recMed${i+1}`)?.value || '').trim());
-  if (meds.some(x => !x)) { toast('Completar los 6 medicamentos'); return; }
-  const payload = {
-    credenciales,
-    paciente: String(row.nombre || '').trim(),
-    obraSocial: String(document.getElementById('recObraSocial')?.value || row.obraSocial || '').trim(),
-    afiliado,
-    diagnostico,
-    medicamentos: [
-      [meds[0], meds[1]],
-      [meds[2], meds[3]],
-      [meds[4], meds[5]]
-    ]
-  };
-  renderJobStatus('recetasJobStatus', 'run', '⏳ Iniciando automatización de recetas...');
-  connectorStartJob('recetas', payload)
-    .then(jobId => {
-      toast('Recetas: ejecución iniciada');
-      renderJobStatus('recetasJobStatus', 'run', `⏳ Ejecutando (job ${String(jobId).slice(0,8)})`);
-      return connectorPollJob(jobId, s => renderJobStatus('recetasJobStatus', 'run', `⏳ Ejecutando: ${s.status || 'en curso'}`));
-    })
-    .then(() => {
-      toast('Recetas completadas');
-      renderJobStatus('recetasJobStatus', 'ok', '✅ Automatización completada');
-    })
-    .catch(err => {
-      const msg = String(err?.message || 'Error ejecutando recetas');
-      toast('❌ ' + msg);
-      renderJobStatus('recetasJobStatus', /no detectado|conector local|iniciar/i.test(msg) ? 'off' : 'err', `❌ ${msg}`);
-      document.getElementById('btnRunRecetas')?.addEventListener('click', generarRecetasDesdeModal, { once: true });
-    });
+  if (!row) { setRecetasFeedback('err', '❌ No hay paciente seleccionado para recetas'); return; }
+  const runBtn = document.getElementById('btnRunRecetas');
+  try {
+    const credenciales = recetasGuardarCreds();
+    if (!credenciales.user || !credenciales.pass) throw new Error('Completar usuario y contraseña PAMI');
+    const afiliado = cleanDigits(getRequiredInputValue('recAfiliado', row.afiliado || ''));
+    if (!afiliado) throw new Error('Completar afiliado');
+    const diagnostico = getRequiredInputValue('recDiag', RECETAS_DEFAULT.diagnostico) || RECETAS_DEFAULT.diagnostico;
+    const obraSocial = getRequiredInputValue('recObraSocial', row.obraSocial || '');
+    const meds = Array.from({ length: 6 }, (_, i) => getRequiredInputValue(`recMed${i + 1}`));
+    if (meds.some(x => !x)) throw new Error('Completar los 6 medicamentos');
+    const payload = {
+      credenciales,
+      paciente: String(row.nombre || '').trim(),
+      obraSocial,
+      afiliado,
+      diagnostico,
+      medicamentos: [
+        [meds[0], meds[1]],
+        [meds[2], meds[3]],
+        [meds[4], meds[5]]
+      ]
+    };
+    RECETAS_RUNNING = true;
+    if (runBtn) { runBtn.disabled = true; runBtn.textContent = '⏳ Ejecutando recetas...'; }
+    renderJobStatus('recetasJobStatus', 'run', '⏳ Iniciando automatización de recetas...');
+    connectorStartJob('recetas', payload)
+      .then(jobId => {
+        setRecetasFeedback('run', `⏳ Recetas: ejecución iniciada (job ${String(jobId).slice(0, 8)})`);
+        return connectorPollJob(jobId, s => renderJobStatus('recetasJobStatus', 'run', `⏳ Ejecutando: ${s.status || 'en curso'}`));
+      })
+      .then(() => {
+        setRecetasFeedback('ok', '✅ Recetas completadas');
+      })
+      .catch(err => {
+        const msg = String(err?.message || 'Error ejecutando recetas');
+        setRecetasFeedback(/no detectado|conector local|iniciar/i.test(msg) ? 'off' : 'err', `❌ ${msg}`);
+      })
+      .finally(() => {
+        RECETAS_RUNNING = false;
+        if (runBtn) { runBtn.disabled = false; runBtn.textContent = '▶ Ejecutar PAMI recetas'; }
+      });
+  } catch (err) {
+    const msg = String(err?.message || 'No se pudo preparar el payload de recetas');
+    setRecetasFeedback('err', `❌ ${msg}`);
+  }
 }
 
 export function maybeAbrirRecetasPostDocs(row) {
