@@ -12,6 +12,7 @@ export let sortDir = 1;
 export let currentTab = 'tabla';
 export let isSyncing = false;
 export let quickFilter = 'TODOS';
+export let hideFinalizadasSinAccion = localStorage.getItem('hide_finalizadas_sin_accion') === '1';
 export let FIRESTORE_ENABLED = false;
 export let FIRESTORE_UNSUB = null;
 export let APPS_SCRIPT_URL = localStorage.getItem('apps_script_url') || '';
@@ -23,6 +24,10 @@ export function setSortDir(dir) { sortDir = dir; }
 export function setCurrentTab(tab) { currentTab = tab; }
 export function setIsSyncing(v) { isSyncing = v; }
 export function setQuickFilter(v) { quickFilter = v; }
+export function setHideFinalizadasSinAccion(v) {
+  hideFinalizadasSinAccion = !!v;
+  localStorage.setItem('hide_finalizadas_sin_accion', hideFinalizadasSinAccion ? '1' : '0');
+}
 export function setFirestoreEnabled(v) { FIRESTORE_ENABLED = v; }
 export function setFirestoreUnsub(fn) { FIRESTORE_UNSUB = fn; }
 export function setAppsScriptUrl(url) {
@@ -96,7 +101,7 @@ export function getEstadoCirCalculado(p) {
   if (isFacturadoCompleto(p.estadoFac)) return 'Realizada';
   if (!fc) return '';
   if (manual === 'REALIZADA') return 'Realizada';
-  if (today && today > fc) return 'Realizada';
+  if (today && today >= fc) return 'Realizada';
   return 'Programada';
 }
 
@@ -144,6 +149,20 @@ export function secondEyeMissing(p) {
   return hasOther ? '' : otro;
 }
 
+function isResolvedForFinalizacion(p) {
+  return isFacturadoCompleto(p.estadoFac) || getEstadoCirCalculado(p) === 'Realizada';
+}
+
+function faltanteSegundoOjo(p) {
+  if (p.ojos !== '2 ojos') return '';
+  const dni = String(p.dni || '').trim();
+  if (!dni) return '';
+  const otro = p.ojo === 'OD' ? 'OI' : 'OD';
+  const other = DB.rows.find(x => x.id !== p.id && String(x.dni || '').trim() === dni && x.ojo === otro);
+  if (!other) return otro;
+  return isResolvedForFinalizacion(other) ? '' : otro;
+}
+
 export function isFacturadoCompleto(fac) {
   const f = (fac || '').toUpperCase();
   return f === 'FACTURADA';
@@ -173,38 +192,40 @@ export function estado(p) {
   const tieneCir = hasValidDate(p.fechaCir);
   if (p.recepLente === 'Devolver') return 'DEVOLVER LENTE';
   if (!getDioptria(p)) return 'FALTA DIOPTRÍA';
-  if (!tieneSol) return 'LISTO PARA PEDIR LENTE';
+  if (!tieneSol) return 'PEDIR LENTE';
   if (!tieneLlego) return 'ESPERANDO LENTE';
-  if (!tieneCir) return 'LENTE LLEGÓ';
+  if (!tieneCir) return 'LLEGÓ LENTE - PROGRAMAR CIRUGÍA';
   const fac = (p.estadoFac || '').toUpperCase();
-  const missEye = secondEyeMissing(p);
   if (isFacturadoCompleto(fac)) {
-    if (missEye) return `FACTURADA | FALTA ${missEye}`;
-    return 'FINALIZADO - FACTURADA';
+    const faltante = faltanteSegundoOjo(p);
+    if (faltante === 'OD') return 'FINALIZADA | FALTA OJO DERECHO';
+    if (faltante === 'OI') return 'FINALIZADA | FALTA OJO IZQUIERDO';
+    if (p.ojos === '1 ojo' || p.ojos === '2 ojos') return 'FINALIZADO';
+    return 'FACTURADA';
   }
-  if (estCir === 'Realizada') return 'CIRUGÍA REALIZADA - FALTA FACTURAR';
+  if (estCir === 'Realizada') return 'REALIZADA';
   return 'FECHA PROGRAMADA';
 }
 
 // ── Próxima acción sugerida ───────────────────────────────────────────────
 export function proximaAccion(p) {
   const st = estado(p);
-  if (st === 'FINALIZADO - FACTURADA' && !secondEyeMissing(p)) return { label: 'Sin acción', color: '#9ca3af', bg: '#f1f5f9', icon: '✓' };
-  if (st.startsWith('FACTURADA |')) return { label: 'Ver segundo ojo', color: '#7c3aed', bg: '#ede9fe', icon: '👁' };
-  if (st === 'CIRUGÍA REALIZADA - FALTA FACTURAR') return { label: 'Facturar', color: '#dc2626', bg: '#fee2e2', icon: '💰' };
+  if (st === 'FINALIZADO') return { label: 'Sin acción', color: '#9ca3af', bg: '#f1f5f9', icon: '✓' };
+  if (st.startsWith('FINALIZADA | FALTA OJO')) return { label: 'Ver segundo ojo', color: '#7c3aed', bg: '#ede9fe', icon: '👁' };
+  if (st === 'REALIZADA') return { label: 'Facturar', color: '#dc2626', bg: '#fee2e2', icon: '💰' };
   if (st === 'FECHA PROGRAMADA' && !p.fechaLlegaLente) {
     const dias = diffDays(new Date(p.fechaCir), toDateOnly(hoyISO()));
     if (dias !== null && dias <= 7) return { label: '⚠ Reclamar lente URGENTE', color: '#b91c1c', bg: '#fef2f2', icon: '🚨' };
     return { label: 'Reclamar lente', color: '#ea580c', bg: '#ffedd5', icon: '📦' };
   }
-  if (st === 'LENTE LLEGÓ' || st === 'PROGRAMAR CIRUGÍA') return { label: 'Programar cirugía', color: '#065f46', bg: '#d1fae5', icon: '📅' };
+  if (st === 'LLEGÓ LENTE - PROGRAMAR CIRUGÍA') return { label: 'Programar cirugía', color: '#065f46', bg: '#d1fae5', icon: '📅' };
   if (st === 'ESPERANDO LENTE') {
     const d = diffDays(toDateOnly(hoyISO()), p.fechaSolLente);
     if (d !== null && d > 15) return { label: 'Reclamar lente', color: '#dc2626', bg: '#fee2e2', icon: '📞' };
     return { label: 'Esperar lente', color: '#1d4ed8', bg: '#dbeafe', icon: '⏳' };
   }
   if (st === 'FECHA PROGRAMADA') return { label: 'Confirmar paciente', color: '#065f46', bg: '#d1fae5', icon: '📞' };
-  if (st === 'LISTO PARA PEDIR LENTE') return { label: 'Pedir lente', color: '#7c3aed', bg: '#ede9fe', icon: '📋' };
+  if (st === 'PEDIR LENTE') return { label: 'Pedir lente', color: '#7c3aed', bg: '#ede9fe', icon: '📋' };
   if (st === 'FALTA DIOPTRÍA') return { label: 'Cargar dioptría', color: '#dc2626', bg: '#fee2e2', icon: '⚠' };
   if (st === 'DEVOLVER LENTE') return { label: 'Devolver lente', color: '#9d174d', bg: '#fce7f3', icon: '↩' };
   return { label: 'Revisar', color: '#6b7280', bg: '#f1f5f9', icon: '?' };
@@ -242,27 +263,24 @@ export function alertas(p, opts = {}) {
     res.push({ type, days: d, key: `${type}:${dni}:${ojo}:${baseKey}`, severity: severityByDays(d, yellow, red), msg });
   };
 
-  if (p.recepLente === 'Devolver' || st === 'DEVOLVER LENTE') {
-    const a = { type: 'devolver', days: 99, key: `devolver:${p.id}`, severity: 'red', msg: 'DEVOLVER LENTE' };
-    if (opts.raw) return [a];
-    return (showSilenced || !isSilenced(a)) ? [a] : [];
-  }
+  if (p.recepLente === 'Devolver' || st === 'DEVOLVER LENTE') return [];
 
   if (p.fechaSolLente && !p.fechaLlegaLente) {
     const d = diffDays(today, p.fechaSolLente);
     push('lens_delayed', d, `DEMORA EN LLEGADA DE LENTE (+${d} días)`, SETTINGS.lens_delay_warn_days, SETTINGS.lens_delay_crit_days, p.fechaSolLente);
-  } else if (st === 'LENTE LLEGÓ' || st === 'PROGRAMAR CIRUGÍA') {
+  } else if (st === 'LLEGÓ LENTE - PROGRAMAR CIRUGÍA') {
     const d = diffDays(today, p.fechaLlegaLente);
     push('no_schedule_after_arrival', d, `LENTE LLEGÓ Y FALTA PROGRAMAR (+${d} días)`, SETTINGS.lens_arrived_not_scheduled_warn_days, SETTINGS.lens_arrived_not_scheduled_crit_days, p.fechaLlegaLente);
-  } else if (st === 'CIRUGÍA REALIZADA - FALTA FACTURAR') {
+  } else if (st === 'REALIZADA') {
     const base = p.fechaCir || p.updatedAt || hoyISO();
     const d = diffDays(today, base);
     push('billing_pending', d, `REALIZADA Y SIN FACTURAR (+${d} días)`, SETTINGS.billing_not_done_warn_days, SETTINGS.billing_not_done_crit_days, base);
-  } else if (st.startsWith('FACTURADA | FALTA ')) {
+  } else if (st.startsWith('FINALIZADA | FALTA OJO ')) {
     const base = p.fechaCir || p.updatedAt || hoyISO();
     const d = diffDays(today, base);
     const otro = p.ojo === 'OD' ? 'OI' : 'OD';
-    push('second_surgery_missing', d, `FACTURADA Y FALTA ${otro} (+${d} días)`, SETTINGS.second_eye_missing_warn_days, SETTINGS.second_eye_missing_crit_days, base);
+    const otroTxt = otro === 'OD' ? 'OJO DERECHO' : 'OJO IZQUIERDO';
+    push('second_surgery_missing', d, `FINALIZADA Y FALTA ${otroTxt} (+${d} días)`, SETTINGS.second_eye_missing_warn_days, SETTINGS.second_eye_missing_crit_days, base);
   }
 
   if (opts.raw) return res;
@@ -290,15 +308,17 @@ export function filtered() {
       if (estNorm(estado(p)) !== estNorm(fEst)) return false;
     }
     switch (quickFilter) {
-      case 'PEDIR LENTE': if (estado(p) !== 'LISTO PARA PEDIR LENTE') return false; break;
-      case 'PROGRAMAR CIRUGIA': if (!['PROGRAMAR CIRUGÍA','LENTE LLEGÓ'].includes(estado(p))) return false; break;
+      case 'PEDIR LENTE': if (estado(p) !== 'PEDIR LENTE') return false; break;
+      case 'PROGRAMAR CIRUGIA': if (estado(p) !== 'LLEGÓ LENTE - PROGRAMAR CIRUGÍA') return false; break;
       case 'FECHA PROGRAMADA': if (estado(p) !== 'FECHA PROGRAMADA') return false; break;
-      case 'REALIZADA': if (estado(p) !== 'CIRUGÍA REALIZADA - FALTA FACTURAR') return false; break;
-      case 'FALTA FACTURAR': if (estado(p) !== 'CIRUGÍA REALIZADA - FALTA FACTURAR') return false; break;
-      case 'FACTURADA': if (estado(p) !== 'FINALIZADO - FACTURADA') return false; break;
-      case 'FACTURADA FALTA OD/OI': if (!estado(p).startsWith('FACTURADA |')) return false; break;
-      case 'CON ALERTAS': if (!alertas(p, { raw: true }).length) return false; break;
+      case 'REALIZADA': if (estado(p) !== 'REALIZADA') return false; break;
+      case 'FALTA FACTURAR': if (estado(p) !== 'REALIZADA') return false; break;
+      case 'FACTURADA': if (estado(p) !== 'FACTURADA' && estado(p) !== 'FINALIZADO') return false; break;
+      case 'FACTURADA FALTA OD/OI': if (!estado(p).startsWith('FINALIZADA | FALTA OJO')) return false; break;
+      case 'CON ALERTAS': if (!alertas(p).length) return false; break;
     }
+    const pa = proximaAccion(p);
+    if (hideFinalizadasSinAccion && estado(p) === 'FINALIZADO' && pa.label === 'Sin acción' && !alertas(p).length) return false;
     return true;
   });
 
@@ -339,17 +359,17 @@ export function validarFila(p) {
 export function bc(e) {
   const map = {
     'FALTA DIOPTRÍA': 'b0',
-    'LISTO PARA PEDIR LENTE': 'b2',
+    'PEDIR LENTE': 'b2',
     'ESPERANDO LENTE': 'b3',
-    'LENTE LLEGÓ': 'b4',
-    'PROGRAMAR CIRUGÍA': 'b4',
+    'LLEGÓ LENTE - PROGRAMAR CIRUGÍA': 'b4',
     'FECHA PROGRAMADA': 'b5',
-    'CIRUGÍA REALIZADA - FALTA FACTURAR': 'b6',
-    'FINALIZADO - FACTURADA': 'b7',
+    'REALIZADA': 'b6',
+    'FACTURADA': 'b7',
+    'FINALIZADO': 'b7',
     'DEVOLVER LENTE': 'b8',
   };
   if (map[e]) return map[e];
-  if (e && e.startsWith('FACTURADA |')) return 'b9';
+  if (e && e.startsWith('FINALIZADA | FALTA OJO')) return 'b9';
   return 'b3';
 }
 
@@ -380,11 +400,12 @@ export function estadoLabelNorm(v) {
 
 export function estadoLabelCanon(v) {
   const n = estadoLabelNorm(v);
-  if (n === 'FINALIZADO-FACTURADA') return 'FINALIZADO - FACTURADA';
-  if (n === 'FACTURADA|FALTA OD' || n === 'FACTURADA | FALTA OD') return 'FACTURADA | FALTA OD';
-  if (n === 'FACTURADA|FALTA OI' || n === 'FACTURADA | FALTA OI') return 'FACTURADA | FALTA OI';
-  if (n === 'PROGRAMAR CIRUGIA') return 'LENTE LLEGÓ';
-  if (n === 'LENTE LLEGO' || n === 'LENTE LLEGÓ') return 'LENTE LLEGÓ';
+  if (n === 'LISTO PARA PEDIR LENTE') return 'PEDIR LENTE';
+  if (n === 'PROGRAMAR CIRUGIA' || n === 'LENTE LLEGO' || n === 'LENTE LLEGÓ') return 'LLEGÓ LENTE - PROGRAMAR CIRUGÍA';
+  if (n === 'CIRUGIA REALIZADA - FALTA FACTURAR') return 'REALIZADA';
+  if (n === 'FINALIZADO - FACTURADA') return 'FINALIZADO';
+  if (n === 'FACTURADA|FALTA OD' || n === 'FACTURADA | FALTA OD') return 'FINALIZADA | FALTA OJO DERECHO';
+  if (n === 'FACTURADA|FALTA OI' || n === 'FACTURADA | FALTA OI') return 'FINALIZADA | FALTA OJO IZQUIERDO';
   if (n === 'LENTE SOLICITADA') return 'ESPERANDO LENTE';
   return String(v || '').trim().replace(/\s+/g, ' ');
 }
