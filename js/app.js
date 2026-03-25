@@ -6,6 +6,7 @@ import { toast, hoyISO, nowTag, downloadTextFile, idbSet, idbGet, fdInput, escap
 import {
   DB, setDB, selId, setSelId, sortCol, setSortCol, sortDir, setSortDir,
   currentTab, setCurrentTab, quickFilter, setQuickFilter as _setQuickFilter,
+  hideFinalizadasSinAccion, setHideFinalizadasSinAccion,
   SETTINGS, ALERT_SILENCES, findRow, normalizeId,
   estado, alertas, secondEyeMissing, isFacturadoCompleto, getDioptria,
   silenciarAlerta, reactivarAlerta, backupDiario, normalizarData, validarFila, filtered
@@ -130,6 +131,11 @@ function clearTopFilters() {
   els.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   const sil = document.getElementById('showSilenced');
   if (sil) sil.checked = false;
+  const hideFin = document.getElementById('hideFinalizadasSinAccion');
+  if (hideFin) {
+    hideFin.checked = false;
+    setHideFinalizadasSinAccion(false);
+  }
   const first = document.querySelector('#quickFilters .qf-btn');
   setQuickFilter('TODOS', first);
 }
@@ -414,7 +420,7 @@ function exportarFiltradoExcel() {
 
 function exportarListos() {
   import('./state.js').then(({ DB: db, estado: est }) => {
-    const listos = db.rows.filter(p => est(p) === 'LISTO PARA PEDIR LENTE');
+    const listos = db.rows.filter(p => est(p) === 'PEDIR LENTE');
     if (!listos.length) { toast('No hay pacientes listos para pedir lente'); return; }
     const cols = ['nombre', 'dni', 'obraSocial', 'afiliado', 'clinica', 'ojo', 'dioptria'];
     const header = cols.join('\t');
@@ -618,7 +624,7 @@ function initEventDelegation() {
       const btn = [...document.querySelectorAll('#quickFilters .qf-btn')].find(b => b.textContent === 'FECHA PROGRAMADA');
       if (btn) setQuickFilter('FECHA PROGRAMADA', btn);
     } else if (action === 'sinFact') {
-      document.getElementById('fEst').value = 'CIRUGÍA REALIZADA - FALTA FACTURAR';
+      document.getElementById('fEst').value = 'REALIZADA';
       const btn = [...document.querySelectorAll('#quickFilters .qf-btn')].find(b => b.textContent === 'TODOS');
       if (btn) setQuickFilter('TODOS', btn);
       render();
@@ -639,8 +645,11 @@ function initEventDelegation() {
     clearTimeout(window._filterTimer);
     window._filterTimer = setTimeout(render, 180);
   });
-  ['fCli', 'fEst', 'fOS', 'showSilenced'].forEach(id => {
+  ['fCli', 'fEst', 'fOS', 'showSilenced', 'hideFinalizadasSinAccion'].forEach(id => {
     document.getElementById(id)?.addEventListener('change', () => {
+      if (id === 'hideFinalizadasSinAccion') {
+        setHideFinalizadasSinAccion(!!document.getElementById('hideFinalizadasSinAccion')?.checked);
+      }
       render();
       const saved = {
         fCli: document.getElementById('fCli')?.value || '',
@@ -700,7 +709,6 @@ function initEventDelegation() {
   document.getElementById('btnCloseLentess')?.addEventListener('click', cerrarLentessModal);
   document.getElementById('btnCloseRecetas')?.addEventListener('click', cerrarModalRecetas);
   document.getElementById('btnCloseRecetas2')?.addEventListener('click', cerrarModalRecetas);
-  document.getElementById('btnRunRecetas')?.addEventListener('click', generarRecetasDesdeModal);
   document.getElementById('btnCloseLentess2')?.addEventListener('click', cerrarLentessModal);
   document.getElementById('btnCloseExport')?.addEventListener('click', closeExport);
   document.getElementById('btnCloseExport2')?.addEventListener('click', closeExport);
@@ -728,7 +736,7 @@ function toExcelFile(filename, headers, rows) {
 }
 
 function buildTSVListos() {
-  const listos = DB.rows.filter(p => estado(p) === 'LISTO PARA PEDIR LENTE');
+  const listos = DB.rows.filter(p => estado(p) === 'PEDIR LENTE');
   return 'clinica\tnombre\tdni\tobra_social\tafiliado\tojo\tdioptria\n' +
     listos.map(p => [p.clinica, p.nombre, p.dni, p.obraSocial, p.afiliado || '', p.ojo, getDioptria(p)].join('\t')).join('\n');
 }
@@ -738,7 +746,7 @@ function copyExcel() {
 }
 
 function downloadExcelListos() {
-  const listos = DB.rows.filter(p => estado(p) === 'LISTO PARA PEDIR LENTE');
+  const listos = DB.rows.filter(p => estado(p) === 'PEDIR LENTE');
   toExcelFile('listos_lente.xls', ['Clínica','Nombre','DNI','O. Social','N° Afiliado','Ojo','Dioptría'], listos.map(p => [p.clinica, p.nombre, p.dni, p.obraSocial, p.afiliado || '', p.ojo, getDioptria(p)]));
   toast('Excel descargado');
 }
@@ -779,11 +787,18 @@ function cargarStockLente() {
 }
 
 function getFilteredRowsForLentess() {
-  return filtered().filter(p => cleanDigits(p.afiliado || '').length >= 8 && String(p.ojo || '').trim() && String(getDioptria(p) || '').trim());
+  return filtered().filter(p =>
+    String(p.obraSocial || '').trim().toUpperCase() === 'PAMI' &&
+    estado(p) === 'PEDIR LENTE' &&
+    cleanDigits(p.afiliado || '').length >= 8 &&
+    String(p.ojo || '').trim() &&
+    String(getDioptria(p) || '').trim()
+  );
 }
 
 function buildLentessPayload(rows) {
   return rows.map(p => ({
+    sourceId: p.id,
     nombre: String(p.nombre || '').trim(),
     afiliado: cleanDigits(p.afiliado || ''),
     ojo: String(p.ojo || '').trim().toUpperCase(),
@@ -794,6 +809,7 @@ function buildLentessPayload(rows) {
 
 let LENTESS_CTX = { sourceRows: [], validRows: [] };
 const LENTESS_CREDS_KEY = 'pami_lentess_creds';
+let LENTESS_RUNNING = false;
 
 function getPamiLentessCreds() {
   try { return JSON.parse(localStorage.getItem(LENTESS_CREDS_KEY) || '{}') || {}; } catch (_) { return {}; }
@@ -810,6 +826,9 @@ function abrirLentessModal() {
   body.innerHTML = `
     <div id="lentessJobStatus" style="font-size:12px;color:#64748b;margin-bottom:8px">Listo para ejecutar en conector local.</div>
     <p style="font-size:12px;color:#6b7280;margin-bottom:8px">Filtradas: <b>${sourceRows.length}</b> · Válidas Lentess: <b>${validRows.length}</b></p>
+    <label style="font-size:12px;display:block;margin:0 0 10px">Fecha solicitud a registrar
+      <input id="lentessFechaSol" class="input" type="date" value="${hoyISO()}" style="width:220px;margin-top:4px">
+    </label>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin:0 0 10px">
       <label style="font-size:12px">Usuario PAMI
         <input id="lentessUser" class="input" type="text" value="${escapeAttr(creds.user || '')}" style="width:100%;margin-top:4px">
@@ -843,11 +862,16 @@ function lentessGuardarCreds() {
 }
 
 function descargarScriptLentess() {
+  if (LENTESS_RUNNING) return;
   const rows = LENTESS_CTX.validRows || [];
   if (!rows.length) { toast('Sin pacientes válidos para Lentess'); return; }
   const cfg = lentessGuardarCreds();
   if (!cfg.user || !cfg.pass) { toast('Completar usuario y contraseña PAMI'); return; }
+  const fechaSol = String(document.getElementById('lentessFechaSol')?.value || '').trim() || hoyISO();
   const payload = { credenciales: { user: cfg.user, pass: cfg.pass }, pacientes: rows.map(r => ({ afiliado: r.afiliado, ojo: r.ojo, lio: r.lio })) };
+  const runBtn = document.getElementById('btnRunLentess');
+  LENTESS_RUNNING = true;
+  if (runBtn) { runBtn.disabled = true; runBtn.textContent = '⏳ Ejecutando Lentess...'; }
   renderJobStatus('lentessJobStatus', 'run', '⏳ Verificando conector...');
   connectorStartJob('lentess', payload)
     .then(jobId => {
@@ -859,13 +883,28 @@ function descargarScriptLentess() {
       });
     })
     .then(() => {
+      rows.forEach(r => {
+        const row = findRow(r.sourceId);
+        if (row) row.fechaSolLente = fechaSol;
+      });
+      return Promise.all(rows.map(r => {
+        const row = findRow(r.sourceId);
+        return row ? save(row) : Promise.resolve();
+      }));
+    })
+    .then(() => {
       toast('✅ Lentess completado correctamente');
-      renderJobStatus('lentessJobStatus', 'ok', '✅ Todas las solicitudes guardadas.');
+      renderJobStatus('lentessJobStatus', 'ok', '✅ Todas las solicitudes guardadas y fecha de solicitud aplicada.');
+      render();
     })
     .catch(err => {
       const msg = String(err?.message || 'Error de ejecución');
       toast('❌ ' + msg);
       renderJobStatus('lentessJobStatus', /no detectado|no está corriendo|iniciar/i.test(msg) ? 'off' : 'err', `❌ ${msg}`);
+    })
+    .finally(() => {
+      LENTESS_RUNNING = false;
+      if (runBtn) { runBtn.disabled = false; runBtn.textContent = '▶ Ejecutar Lentess'; }
     });
 }
 
@@ -883,6 +922,8 @@ function restoreFilters() {
       const el = document.getElementById('showSilenced');
       if (el) el.checked = !!saved.showSilenced;
     }
+    const hf = document.getElementById('hideFinalizadasSinAccion');
+    if (hf) hf.checked = hideFinalizadasSinAccion;
   } catch (_) { }
 }
 
@@ -932,4 +973,3 @@ window.startOriginalApp = async function () {
 };
   window.addEventListener('side:opened', e => initSideDraft(e.detail.id));
   window.addEventListener('side:closed', () => { sideDraft = null; markSideDirty(false); });
-

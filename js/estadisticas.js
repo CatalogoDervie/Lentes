@@ -21,12 +21,13 @@ const C = {
 };
 
 const STAGE_ORDER = [
-  'LISTO PARA PEDIR LENTE',
+  'PEDIR LENTE',
   'ESPERANDO LENTE',
-  'LENTE LLEGÓ',
+  'LLEGÓ LENTE - PROGRAMAR CIRUGÍA',
   'FECHA PROGRAMADA',
-  'CIRUGÍA REALIZADA - FALTA FACTURAR',
-  'FINALIZADO - FACTURADA',
+  'REALIZADA',
+  'FACTURADA',
+  'FINALIZADO',
 ];
 
 let statsMonth = '';
@@ -143,10 +144,10 @@ export function renderEstadisticas() {
   rows.forEach(r => {
     const st = estado(r);
     if (stageCounts[st] != null) stageCounts[st] += 1;
-    if (st.startsWith('FACTURADA |')) facturadaFalta += 1;
+    if (st.startsWith('FINALIZADA | FALTA OJO')) facturadaFalta += 1;
     const cli = r.clinica || 'Sin clínica';
     clinicCount[cli] = (clinicCount[cli] || 0) + 1;
-    const ars = alertas(r, { raw: true });
+    const ars = alertas(r);
     allAlerts += ars.length;
     redAlerts += ars.filter(a => a.severity === 'red').length;
     clinicAlerts[cli] = (clinicAlerts[cli] || 0) + ars.length;
@@ -169,8 +170,8 @@ export function renderEstadisticas() {
   const facturadas = rows.filter(r => isFacturadoCompleto(r.estadoFac));
   const currentBottleneck = [
     ['Esperando lente', stageCounts['ESPERANDO LENTE']],
-    ['Programar cirugía', stageCounts['LENTE LLEGÓ']],
-    ['Falta facturar', stageCounts['CIRUGÍA REALIZADA - FALTA FACTURAR']],
+    ['Programar cirugía', stageCounts['LLEGÓ LENTE - PROGRAMAR CIRUGÍA']],
+    ['Falta facturar', stageCounts['REALIZADA']],
   ].sort((a, b) => b[1] - a[1])[0] || ['—', 0];
   const clinicMostAlerts = Object.entries(clinicAlerts).sort((a, b) => b[1] - a[1])[0] || ['—', 0];
 
@@ -218,7 +219,7 @@ export function renderEstadisticas() {
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">
       ${card('Pacientes en vista', uniquePatients, `${rows.length} episodios quirúrgicos`, 'navy')}
       ${card('Facturadas', facturadas.length, `${percent(facturadas.length, rows.length)}% del total visible`, 'green')}
-      ${card('Realizadas sin facturar', stageCounts['CIRUGÍA REALIZADA - FALTA FACTURAR'], 'Pacientes listos para cerrar', 'amber')}
+      ${card('Realizadas sin facturar', stageCounts['REALIZADA'], 'Pacientes listos para cerrar', 'amber')}
       ${card('Alertas críticas', redAlerts, `${allAlerts} alertas activas`, 'red')}
     </div>
 
@@ -288,12 +289,12 @@ export function renderEstadisticas() {
       labels: ['Listo p/ pedir', 'Esperando lente', 'Programar', 'Programada', 'Falta facturar', 'Facturada', '2º ojo'],
       datasets: [{
         data: [
-          stageCounts['LISTO PARA PEDIR LENTE'],
+          stageCounts['PEDIR LENTE'],
           stageCounts['ESPERANDO LENTE'],
-          stageCounts['LENTE LLEGÓ'],
+          stageCounts['LLEGÓ LENTE - PROGRAMAR CIRUGÍA'],
           stageCounts['FECHA PROGRAMADA'],
-          stageCounts['CIRUGÍA REALIZADA - FALTA FACTURAR'],
-          stageCounts['FINALIZADO - FACTURADA'],
+          stageCounts['REALIZADA'],
+          stageCounts['FINALIZADO'],
           facturadaFalta,
         ],
         backgroundColor: ['#c7d2fe', '#93c5fd', '#67e8f9', '#86efac', '#fcd34d', '#86efac', '#ddd6fe'],

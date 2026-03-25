@@ -6,12 +6,11 @@ import { toast } from './utils.js';
 
 const RECETAS_DEFAULT = {
   diagnostico: 'H57',
-  user: 'UP20338635959',
-  pass: 'joaquin444',
   meds: ['GATMICIN', 'TOLF', 'BRIMOPRESS', 'NATAX', 'DEXAMETASONA FABRA', 'TROPIOFTAL F']
 };
 const RECETAS_CREDS_KEY = 'pami_recetas_creds';
 let RECETAS_CTX = { row: null };
+let RECETAS_RUNNING = false;
 
 function getPamiRecetasCreds() {
   try { return JSON.parse(localStorage.getItem(RECETAS_CREDS_KEY) || '{}') || {}; } catch (_) { return {}; }
@@ -43,15 +42,18 @@ export function abrirModalRecetas(row) {
         <input id="recObraSocial" class="input" type="text" value="${escapeAttr(row.obraSocial || '')}" style="width:100%;margin-top:4px">
       </label>
       <label style="font-size:12px">Usuario PAMI
-        <input id="recUser" class="input" type="text" value="${escapeAttr(creds.user || RECETAS_DEFAULT.user || '')}" style="width:100%;margin-top:4px">
+        <input id="recUser" class="input" type="text" value="${escapeAttr(creds.user || '')}" style="width:100%;margin-top:4px">
       </label>
       <label style="font-size:12px">Contraseña PAMI
-        <input id="recPass" class="input" type="password" value="${escapeAttr(creds.pass || RECETAS_DEFAULT.pass || '')}" style="width:100%;margin-top:4px">
+        <input id="recPass" class="input" type="password" value="${escapeAttr(creds.pass || '')}" style="width:100%;margin-top:4px">
       </label>
     </div>
     <label style="font-size:12px;display:inline-flex;gap:6px;align-items:center;margin-bottom:10px">
-      <input id="recRemember" type="checkbox" ${(creds.user || creds.pass || RECETAS_DEFAULT.user || RECETAS_DEFAULT.pass) ? 'checked' : ''}> guardar credenciales en este navegador
+      <input id="recRemember" type="checkbox" ${(creds.user || creds.pass) ? 'checked' : ''}> guardar credenciales en este navegador
     </label>
+    <div style="font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;margin:0 0 10px">
+      Si PAMI muestra captcha, validación o OTP, resolvelo en la ventana de Chrome. El proceso espera solo.
+    </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin:0 0 10px">
       <label style="font-size:12px">Diagnóstico CIE10
         <input id="recDiag" class="input" type="text" value="${escapeAttr(RECETAS_DEFAULT.diagnostico)}" style="width:100%;margin-top:4px">
@@ -63,7 +65,6 @@ export function abrirModalRecetas(row) {
         <input id="recMed${idx+1}" class="input" type="text" value="${escapeAttr(m)}" style="width:100%;margin-top:4px">
       </label>`).join('')}
     </div>`;
-  document.getElementById('btnRunRecetas')?.addEventListener('click', generarRecetasDesdeModal, { once: true });
   const modal = document.getElementById('recetasModal');
   if (modal) modal.style.display = 'flex';
 }
@@ -83,6 +84,7 @@ function recetasGuardarCreds() {
 }
 
 export function generarRecetasDesdeModal() {
+  if (RECETAS_RUNNING) return;
   const row = RECETAS_CTX.row;
   if (!row) { toast('No hay paciente seleccionado para recetas'); return; }
   const credenciales = recetasGuardarCreds();
@@ -105,6 +107,9 @@ export function generarRecetasDesdeModal() {
     ]
   };
   renderJobStatus('recetasJobStatus', 'run', '⏳ Iniciando automatización de recetas...');
+  const runBtn = document.getElementById('btnRunRecetas');
+  RECETAS_RUNNING = true;
+  if (runBtn) { runBtn.disabled = true; runBtn.textContent = '⏳ Ejecutando recetas...'; }
   connectorStartJob('recetas', payload)
     .then(jobId => {
       toast('Recetas: ejecución iniciada');
@@ -119,7 +124,10 @@ export function generarRecetasDesdeModal() {
       const msg = String(err?.message || 'Error ejecutando recetas');
       toast('❌ ' + msg);
       renderJobStatus('recetasJobStatus', /no detectado|conector local|iniciar/i.test(msg) ? 'off' : 'err', `❌ ${msg}`);
-      document.getElementById('btnRunRecetas')?.addEventListener('click', generarRecetasDesdeModal, { once: true });
+    })
+    .finally(() => {
+      RECETAS_RUNNING = false;
+      if (runBtn) { runBtn.disabled = false; runBtn.textContent = '▶ Ejecutar PAMI recetas'; }
     });
 }
 

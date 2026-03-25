@@ -57,14 +57,15 @@ export function refreshEstadoFilterOptions() {
     if (key && !map.has(key)) map.set(key, st);
   });
   const pref = [
-    'LISTO PARA PEDIR LENTE',
+    'PEDIR LENTE',
     'ESPERANDO LENTE',
-    'LENTE LLEGÓ',
+    'LLEGÓ LENTE - PROGRAMAR CIRUGÍA',
     'FECHA PROGRAMADA',
-    'CIRUGÍA REALIZADA - FALTA FACTURAR',
-    'FINALIZADO - FACTURADA',
-    'FACTURADA | FALTA OD',
-    'FACTURADA | FALTA OI',
+    'REALIZADA',
+    'FACTURADA',
+    'FINALIZADA | FALTA OJO DERECHO',
+    'FINALIZADA | FALTA OJO IZQUIERDO',
+    'FINALIZADO',
     'DEVOLVER LENTE',
   ];
   const ordered = [
@@ -89,7 +90,7 @@ export function renderStats() {
     nCrit += ars.filter(a => a.severity === 'red').length;
     const e = estado(p);
     if (e === 'FECHA PROGRAMADA') nprog++;
-    if (e === 'CIRUGÍA REALIZADA - FALTA FACTURAR' || e === 'FINALIZADO - FACTURADA') nreal++;
+    if (e === 'REALIZADA' || e === 'FACTURADA' || e === 'FINALIZADO') nreal++;
     if (isFacturadoCompleto(p.estadoFac)) nFact++;
     if (p.clinica === 'CDU') nCDU++;
     if (p.clinica === 'Gualeguaychú') nGchu++;
@@ -142,7 +143,7 @@ export function toggleAlerts() {
 
 export function renderAlerts() {
   const showSilenced = !!document.getElementById('showSilenced')?.checked;
-  const withAlerts = DB.rows.map(p => ({ p, alerts: alertas(p, { raw: true }) })).filter(x => x.alerts.length > 0);
+  const withAlerts = DB.rows.map(p => ({ p, alerts: alertas(p) })).filter(x => x.alerts.length > 0);
   let flat = withAlerts.flatMap(x =>
     x.alerts.filter(a => showSilenced || !isSilenced(a)).map(a => ({ p: x.p, a }))
   );
@@ -175,10 +176,8 @@ export function renderWorkdayPanel() {
   const hoy = hoyISO();
   const all = DB.rows;
   const urgHoy = all.filter(p => p.fechaCir === hoy && estado(p) === 'FECHA PROGRAMADA');
-  const critCount = all.reduce((s, p) => s + alertas(p, { raw: true }).filter(a => a.severity === 'red').length, 0);
   const blocks = [
     { icon: '🗓', label: 'Cirugías hoy', n: urgHoy.length, color: '#dc2626', bg: '#fef2f2', action: 'urgHoy' },
-    { icon: '🚨', label: 'Alertas críticas', n: critCount, color: '#991b1b', bg: '#fef2f2', action: 'criticas' },
   ].filter(b => b.n > 0);
   const container = document.getElementById('workdayBlocks');
   if (!container) return;
@@ -240,7 +239,7 @@ export function renderTabla() {
     const e = estado(p);
     const sel = normalizeId(p.id) === normalizeId(selId);
     const dup = dupIds.has(p.id);
-    const rowAlerts = alertas(p, { raw: true });
+    const rowAlerts = alertas(p);
     const topA = rowAlerts.find(a => a.severity === 'red') || rowAlerts.find(a => a.severity === 'orange') || rowAlerts[0];
     const alertDot = topA ? `<span title="${escapeAttr(topA.msg)}" style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${topA.severity === 'red' ? '#dc2626' : topA.severity === 'orange' ? '#f97316' : '#f59e0b'};margin-left:5px;flex-shrink:0"></span>` : '';
     const pa = proximaAccion(p);
@@ -262,7 +261,7 @@ export function renderTabla() {
     const tds = MAIN_TABLE_COLUMNS.map(c => rowCells[c.key]).join('');
     const hasCritRow = rowAlerts.some(a => a.severity === 'red');
     const hasWarnRow = rowAlerts.some(a => a.severity === 'orange' || a.severity === 'yellow');
-    const rowSevCls = hasCritRow ? 'row-crit' : hasWarnRow ? 'row-warn' : (e === 'FINALIZADO - FACTURADA' ? 'row-ok' : '');
+    const rowSevCls = hasCritRow ? 'row-crit' : hasWarnRow ? 'row-warn' : (e === 'FINALIZADO' ? 'row-ok' : '');
     return `<tr class="${sel ? 'selected' : ''} ${dup ? 'dup-error' : ''} ${rowSevCls}" data-row-click="${escapeAttr(p.id)}">${tds}</tr>`;
   }).join('');
 }
@@ -270,12 +269,13 @@ export function renderTabla() {
 // ── Kanban ────────────────────────────────────────────────────────────────
 const KANCOLS = [
   { key: 'FALTA DIOPTRÍA', label: 'Falta dioptría' },
-  { key: 'LISTO PARA PEDIR LENTE', label: 'Listo p/ pedir' },
+  { key: 'PEDIR LENTE', label: 'Pedir lente' },
   { key: 'ESPERANDO LENTE', label: 'Esperando lente' },
-  { key: 'LENTE LLEGÓ', label: 'Programar cirugía' },
+  { key: 'LLEGÓ LENTE - PROGRAMAR CIRUGÍA', label: 'Programar cirugía' },
   { key: 'FECHA PROGRAMADA', label: 'Fecha programada' },
-  { key: 'CIRUGÍA REALIZADA - FALTA FACTURAR', label: 'Falta facturar' },
-  { key: 'FINALIZADO - FACTURADA', label: 'Finalizado' },
+  { key: 'REALIZADA', label: 'Realizada' },
+  { key: 'FACTURADA', label: 'Facturada' },
+  { key: 'FINALIZADO', label: 'Finalizado' },
 ];
 
 export function renderKanban() {
@@ -283,7 +283,7 @@ export function renderKanban() {
   const kanView = document.getElementById('kanView');
   if (!kanView) return;
   kanView.innerHTML = `<div class="kanban">${KANCOLS.map(col => {
-    const cards = data.filter(p => estado(p) === col.key || (col.key === 'FINALIZADO - FACTURADA' && estado(p).startsWith('FACTURADA |')));
+    const cards = data.filter(p => estado(p) === col.key);
     return `<div class="kancol">
       <div class="kancol-h"><span>${escapeHtml(col.label)}</span><span class="kancol-n">${cards.length}</span></div>
       <div>${cards.length ? cards.map(p => {
@@ -427,7 +427,7 @@ export function openSide(id) {
   const st = estado(p);
   const fac = (p.estadoFac || '').toUpperCase();
   const qaButtons = [];
-  if (!p.fechaSolLente && st !== 'FINALIZADO - FACTURADA') qaButtons.push(`<button class="qa-btn" data-qa-action="solLenteHoy" data-qa-id="${escapeAttr(id)}">📋 Sol. lente hoy</button>`);
+  if (!p.fechaSolLente && st !== 'FINALIZADO') qaButtons.push(`<button class="qa-btn" data-qa-action="solLenteHoy" data-qa-id="${escapeAttr(id)}">📋 Sol. lente hoy</button>`);
   if (p.fechaSolLente && !p.fechaLlegaLente) qaButtons.push(`<button class="qa-btn green" data-qa-action="lenteLlegoHoy" data-qa-id="${escapeAttr(id)}">📦 Lente llegó hoy</button>`);
   if (p.fechaLlegaLente && !p.fechaCir) qaButtons.push(`<button class="qa-btn" data-qa-action="programarCirugia" data-qa-id="${escapeAttr(id)}">📅 Programar cirugía</button>`);
   const estCirCalc = getEstadoCirCalculado(p);
