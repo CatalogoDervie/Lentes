@@ -790,7 +790,6 @@ function getFilteredRowsForLentess() {
   return filtered().filter(p =>
     String(p.obraSocial || '').trim().toUpperCase() === 'PAMI' &&
     estado(p) === 'PEDIR LENTE' &&
-    cleanDigits(p.afiliado || '').length >= 8 &&
     String(p.ojo || '').trim() &&
     String(getDioptria(p) || '').trim()
   );
@@ -818,14 +817,14 @@ function getPamiLentessCreds() {
 function abrirLentessModal() {
   const sourceRows = filtered();
   const validRows = buildLentessPayload(getFilteredRowsForLentess());
-  if (!validRows.length) { toast('Sin pacientes válidos para Lentess en el filtro actual'); return; }
+  if (!validRows.length) { toast('Sin pacientes en estado PEDIR LENTE para ejecutar'); return; }
   const creds = getPamiLentessCreds();
   LENTESS_CTX = { sourceRows, validRows };
   const body = document.getElementById('lentessBody');
   if (!body) return;
   body.innerHTML = `
     <div id="lentessJobStatus" style="font-size:12px;color:#64748b;margin-bottom:8px">Listo para ejecutar en conector local.</div>
-    <p style="font-size:12px;color:#6b7280;margin-bottom:8px">Filtradas: <b>${sourceRows.length}</b> · Válidas Lentess: <b>${validRows.length}</b></p>
+    <p style="font-size:12px;color:#6b7280;margin-bottom:8px">Filtradas: <b>${sourceRows.length}</b> · Listas para pedir lente: <b>${validRows.length}</b></p>
     <label style="font-size:12px;display:block;margin:0 0 10px">Fecha solicitud a registrar
       <input id="lentessFechaSol" class="input" type="date" value="${hoyISO()}" style="width:220px;margin-top:4px">
     </label>
@@ -845,7 +844,7 @@ function abrirLentessModal() {
       <tbody>${validRows.map(p => `<tr>${[p.nombre,p.afiliado,p.ojo,p.lio,p.clinica].map(v => `<td style="padding:7px 10px;border-bottom:1px solid #f1f5f9">${escapeAttr(v)}</td>`).join('')}</tr>`).join('')}</tbody>
     </table>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
-      <button class="btn primary" id="btnRunLentess">▶ Ejecutar Lentess</button>
+      <button class="btn primary" id="btnRunLentess">▶ Ejecutar pedido de lentes</button>
     </div>`;
   document.getElementById('btnRunLentess')?.addEventListener('click', descargarScriptLentess);
   const modal = document.getElementById('lentessModal');
@@ -864,18 +863,24 @@ function lentessGuardarCreds() {
 function descargarScriptLentess() {
   if (LENTESS_RUNNING) return;
   const rows = LENTESS_CTX.validRows || [];
-  if (!rows.length) { toast('Sin pacientes válidos para Lentess'); return; }
+  if (!rows.length) { toast('Sin pacientes para ejecutar pedido de lentes'); return; }
+  const sinAfiliado = rows.filter(r => !cleanDigits(r.afiliado || '')).map(r => r.nombre || `ID ${r.sourceId}`);
+  if (sinAfiliado.length) {
+    toast(`Falta afiliado PAMI en: ${sinAfiliado.slice(0, 3).join(', ')}${sinAfiliado.length > 3 ? ` (+${sinAfiliado.length - 3})` : ''}`);
+    renderJobStatus('lentessJobStatus', 'err', '❌ Completá afiliado PAMI en los pacientes indicados y reintentá.');
+    return;
+  }
   const cfg = lentessGuardarCreds();
   if (!cfg.user || !cfg.pass) { toast('Completar usuario y contraseña PAMI'); return; }
   const fechaSol = String(document.getElementById('lentessFechaSol')?.value || '').trim() || hoyISO();
   const payload = { credenciales: { user: cfg.user, pass: cfg.pass }, pacientes: rows.map(r => ({ afiliado: r.afiliado, ojo: r.ojo, lio: r.lio })) };
   const runBtn = document.getElementById('btnRunLentess');
   LENTESS_RUNNING = true;
-  if (runBtn) { runBtn.disabled = true; runBtn.textContent = '⏳ Ejecutando Lentess...'; }
+  if (runBtn) { runBtn.disabled = true; runBtn.textContent = '⏳ Ejecutando pedido de lentes...'; }
   renderJobStatus('lentessJobStatus', 'run', '⏳ Verificando conector...');
   connectorStartJob('lentess', payload)
     .then(jobId => {
-      toast('✅ Lentess: proceso iniciado');
+      toast('✅ Pedido de lentes: proceso iniciado');
       renderJobStatus('lentessJobStatus', 'run', `⚙️ Procesando solicitudes... (job ${String(jobId).slice(0, 8)})`);
       return connectorPollJob(jobId, s => {
         const label = s._label || `⚙️ ${s.status || 'en curso'}`;
@@ -893,7 +898,7 @@ function descargarScriptLentess() {
       }));
     })
     .then(() => {
-      toast('✅ Lentess completado correctamente');
+      toast('✅ Pedido de lentes completado correctamente');
       renderJobStatus('lentessJobStatus', 'ok', '✅ Todas las solicitudes guardadas y fecha de solicitud aplicada.');
       render();
     })
@@ -904,7 +909,7 @@ function descargarScriptLentess() {
     })
     .finally(() => {
       LENTESS_RUNNING = false;
-      if (runBtn) { runBtn.disabled = false; runBtn.textContent = '▶ Ejecutar Lentess'; }
+      if (runBtn) { runBtn.disabled = false; runBtn.textContent = '▶ Ejecutar pedido de lentes'; }
     });
 }
 
